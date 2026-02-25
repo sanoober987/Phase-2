@@ -1,77 +1,54 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
-
-# Environment variables
+# ==============================
+# 🔐 Environment Variables (DO NOT PUSH)
+# ==============================
 .env
 .env.local
 .env.*.local
 *.env
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+# ==============================
+# 🐍 Python Backend
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-# Testing
+.venv/
+venv/
+ENV/
+env/
+
+build/
+dist/
+*.egg-info/
+
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
 
-# Logs
+*.db
+*.sqlite3
 *.log
 logs/
 
-# OS
+# ==============================
+# ⚛️ Next.js Frontend
+# ==============================
+node_modules/
+.next/
+out/
+
+# ==============================
+# 💻 IDE / OS
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 .DS_Store
 Thumbs.db
-
-# Database
-*.db
-*.sqlite3
-
-# Byte-compiled / optimized / DLL files
-*.pyc
-*.pyo
-*.pyd
-
-# Distribution / packaging
-*.manifest
-*.spec
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Ruff
-.ruff_cache/
-node_modules
