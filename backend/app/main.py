@@ -3,72 +3,85 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from app.api.routes.auth import router as auth_router
-from app.api.routes.tasks import router as tasks_router
-from app.config import get_settings
 from app.database import init_db
+from app.api.routes import auth, tasks, chat
+from app.config import get_settings
+from app.services.agent_service import (
+    check_groq_health,
+    close_client,
+)
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application startup and shutdown events."""
+    """Startup and shutdown lifecycle."""
+    settings = get_settings()
+
+    # Startup
+    logger.info("Starting backend (env=%s)...", settings.environment)
     await init_db()
+
+    # Check Groq API key validity at startup (non-blocking — warn only)
+    health = await check_groq_health()
+    if health["healthy"]:
+        logger.info("Groq OK — model=%s", settings.groq_model)
+    else:
+        logger.warning(
+            "Groq health check FAILED: %s. Chat will fail until resolved.",
+            health.get("error", "unknown"),
+        )
+
+    logger.info(
+        "Config: model=%s, timeout=%ss, max_tokens=%d, max_input_tokens=%d, "
+        "retries=%d, user_rpm=%d, history_depth=%d",
+        settings.groq_model,
+        settings.groq_timeout,
+        settings.groq_max_tokens,
+        settings.groq_max_input_tokens,
+        settings.groq_max_retries,
+        settings.groq_user_rpm,
+        settings.chat_history_depth,
+    )
+
     yield
 
+    # Shutdown
+    await close_client()
+    logger.info("Backend shutdown complete.")
 
-# Create FastAPI app instance
-app = FastAPI(
-    title="Todo API",
-    lifespan=lifespan,
-    # Hide internal details from auto-generated OpenAPI in production
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
 
-_settings = get_settings()
+app = FastAPI(title="AI Task Agent", lifespan=lifespan)
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_settings.cors_origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-
-# ── Global exception handler ─────────────────────────────────────────────────
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """
-    Catch-all for any unhandled exception.
-    Logs full traceback server-side; returns a safe generic message to the client.
-    """
-    logger.exception(
-        "Unhandled exception on %s %s: %s",
-        request.method,
-        request.url.path,
-        exc,
-    )
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred. Please try again later."},
-    )
+# Include routes
+app.include_router(auth.router)
+app.include_router(tasks.router)
+app.include_router(chat.router)
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
-@app.get("/health", tags=["system"])
-async def health_check():
-    """Lightweight liveness probe for load balancers and container orchestrators."""
-    return {"status": "ok"}
+@app.get("/")
+async def root():
+    return {"message": "Backend is running successfully"}
 
 
-# ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(auth_router)
-app.include_router(tasks_router)
+@app.get("/health/ai", tags=["health"])
+async def ai_health():
+    """Check Groq API connectivity and key validity."""
+    health = await check_groq_health()
+    return {"groq": health}

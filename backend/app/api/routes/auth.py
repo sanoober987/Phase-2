@@ -3,7 +3,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_session
 from app.models.user import UserCreate as UserCreateModel
 from app.schemas.auth import UserCreate, UserLogin, TokenResponse, UserResponse
 from app.services.auth_service import (
@@ -14,6 +13,7 @@ from app.services.auth_service import (
 )
 from app.config import get_settings
 from app.models.user import User
+from app.database import get_async_session
 
 logger = logging.getLogger(__name__)
 

@@ -1,46 +1,45 @@
-import logging
+# app/database.py
 
-from sqlmodel import SQLModel
+import os
+from dotenv import load_dotenv
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 
-from app.config import get_settings
+# Load environment variables
+load_dotenv()
 
-logger = logging.getLogger(__name__)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-_settings = get_settings()
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL is not set in .env file")
 
-# echo=True only in non-production environments — avoids leaking query data in prod logs
-_echo_sql = _settings.environment != "production"
-
+# Create async engine
 engine = create_async_engine(
-    _settings.database_url,
-    echo=_echo_sql,
-    future=True,
-    # Pool settings tuned for Neon serverless (short-lived connections)
-    pool_pre_ping=True,         # verify connection is alive before use
-    pool_recycle=300,           # recycle connections after 5 minutes
+    DATABASE_URL,
+    echo=True,
+    poolclass=NullPool,
 )
 
-# Session factory used by deps.py
-async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# Create session factory
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+# Base model
+Base = declarative_base()
 
 
+# Dependency for routes
 async def get_async_session():
-    """Async generator yielding a database session (used by auth routes directly)."""
-    async with AsyncSession(engine) as session:
+    async with AsyncSessionLocal() as session:
         yield session
 
 
+# Initialize database (create tables)
 async def init_db():
-    """Create all database tables on startup. Crashes the process on failure."""
-    from app.models.user import User  # noqa: F401
-    from app.models.task import Task  # noqa: F401
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all)
-        logger.info("Database tables created/verified successfully")
-    except SQLAlchemyError as e:
-        logger.critical("FATAL: Failed to initialize database tables: %s", e)
-        raise  # crash the process — do not serve requests with a broken DB
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

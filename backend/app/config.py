@@ -16,7 +16,21 @@ class Settings:
             for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
             if o.strip()
         ]
+
+        # Groq configuration — single source of truth for the whole app
+        self.groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+        self.groq_base_url: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+        self.groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+        self.groq_timeout: float = float(os.getenv("GROQ_TIMEOUT", "60"))
+        self.groq_max_tokens: int = int(os.getenv("GROQ_MAX_TOKENS", "2048"))
+        self.groq_max_input_tokens: int = int(os.getenv("GROQ_MAX_INPUT_TOKENS", "8000"))
+        self.groq_max_retries: int = int(os.getenv("GROQ_MAX_RETRIES", "3"))
+        self.groq_user_rpm: int = int(os.getenv("GROQ_USER_RPM", "20"))
+
+        # Chat settings
+        self.chat_history_depth: int = int(os.getenv("CHAT_HISTORY_DEPTH", "20"))
         self.environment: str = os.getenv("ENVIRONMENT", "development")
+        self.log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
     @staticmethod
     def _require(key: str) -> str:

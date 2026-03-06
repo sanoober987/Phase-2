@@ -93,3 +93,27 @@ export interface Toast {
   type: ToastType;
   duration?: number;
 }
+
+// Chat Types
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ToolCallRecord {
+  tool: string;
+  arguments: Record<string, unknown>;
+  result: Record<string, unknown>;
+}
+
+export interface ChatRequest {
+  message: string;
+  conversation_id?: string;
+}
+
+export interface ChatResponse {
+  reply: string;
+  tool_calls: ToolCallRecord[];
+  conversation_id: string;
+}

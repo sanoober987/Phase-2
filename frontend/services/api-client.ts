@@ -1,157 +1,179 @@
-// frontend/services/api-client.ts
-import { getAuthHeaders, logout, redirectToLogin } from '@/lib/auth';
-import { retryNetworkCall } from '@/lib/retry-utils';
-import { Task, TaskCreateData, TaskUpdateData, TaskListResponse, TaskQueryParams } from '@/types';
+// ======================================================
+// API CLIENT — PRODUCTION SAFE VERSION (HACKATHON READY)
+// ======================================================
 
-// Must match NEXT_PUBLIC_API_URL in .env.local
-// Fallback uses 127.0.0.1 — NOT localhost — to avoid browser DNS resolution
-// inconsistencies when backend binds to 127.0.0.1 explicitly.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-const REQUEST_TIMEOUT = 30000; // 30 seconds
+import { getAuthHeaders, logout, redirectToLogin } from "@/lib/auth";
+import {
+  Task,
+  TaskCreateData,
+  TaskUpdateData,
+  TaskListResponse,
+  TaskQueryParams,
+  ChatRequest,
+  ChatResponse,
+} from "@/types";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+const REQUEST_TIMEOUT = 120000;
+
+// ======================================================
+// API ERROR CLASS (MUST EXPORT)
+// ======================================================
 
 export class ApiError extends Error {
-  public status: number;
-  public error_code: string | null;
+  status: number;
 
-  constructor(message: string, status: number, error_code: string | null = null) {
+  constructor(message: string, status: number) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
-    this.error_code = error_code;
   }
 }
 
-class TaskApiService {
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+// ======================================================
+// API SERVICE
+// ======================================================
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      // Spread any caller-provided headers first, then override with auth headers
-      ...(options.headers as Record<string, string> | undefined),
-      ...getAuthHeaders(),
-    };
+class TaskApiService {
+
+  // -----------------------------
+  // Core Request Handler
+  // -----------------------------
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT
+    );
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        `${API_BASE_URL}${endpoint}`,
+        {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeaders(),
+          },
+          signal: controller.signal,
+        }
+      );
 
       clearTimeout(timeoutId);
 
+      // Auth expired
       if (response.status === 401) {
-        // Clear stale credentials BEFORE redirecting — prevents redirect loops
-        // where middleware sees the old cookie and bounces back to /dashboard.
         logout();
         redirectToLogin();
-        throw new ApiError('Session expired. Please log in again.', 401);
+        throw new ApiError("Session expired", 401);
       }
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          typeof errorData.detail === 'string'
-            ? errorData.detail
-            : Array.isArray(errorData.detail)
-            ? errorData.detail.map((e: { msg: string }) => e.msg).join(', ')
-            : `HTTP error ${response.status}`;
-        throw new ApiError(errorMessage, response.status, errorData.error_code ?? null);
+        const data = await response.json().catch(() => ({}));
+
+        throw new ApiError(
+          data.detail || `Request failed (${response.status})`,
+          response.status
+        );
       }
 
-      // DELETE → 204 No Content
       if (response.status === 204) {
         return undefined as unknown as T;
       }
 
       return response.json();
-    } catch (error) {
+    }
+    catch (err: any) {
       clearTimeout(timeoutId);
 
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new ApiError('Request timed out. Please try again.', 408);
+      if (err.name === "AbortError") {
+        throw new ApiError("Request timeout", 408);
       }
-      // TypeError with "fetch" in the message = network unreachable / CORS blocked
-      if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
-        throw new ApiError(
-          'Cannot reach the server. Make sure the backend is running on http://127.0.0.1:8000',
-          0
-        );
-      }
-      throw error;
+
+      throw err;
     }
   }
 
-  // ── Task endpoints ──────────────────────────────────────────────────────────
+  // ======================================================
+  // TASK APIs
+  // ======================================================
 
   async getTasks(params?: TaskQueryParams): Promise<TaskListResponse> {
-    const queryParams = new URLSearchParams();
+    const query = new URLSearchParams();
+
     if (params?.completed !== undefined)
-      queryParams.append('completed', String(params.completed));
+      query.append("completed", String(params.completed));
+
     if (params?.limit !== undefined)
-      queryParams.append('limit', String(params.limit));
+      query.append("limit", String(params.limit));
+
     if (params?.offset !== undefined)
-      queryParams.append('offset', String(params.offset));
+      query.append("offset", String(params.offset));
 
-    const queryString = queryParams.toString();
-    const endpoint = `/api/tasks${queryString ? '?' + queryString : ''}`;
+    const endpoint =
+      "/api/tasks" + (query.toString() ? `?${query}` : "");
 
-    // GET is idempotent — safe to retry
-    return retryNetworkCall(
-      () => this.request<TaskListResponse>(endpoint, { method: 'GET' }),
-      { maxRetries: 3 }
-    );
-  }
-
-  async createTask(taskData: TaskCreateData): Promise<Task> {
-    // POST is NOT idempotent — never retry; duplicate tasks would be created
-    return this.request<Task>('/api/tasks', {
-      method: 'POST',
-      body: JSON.stringify(taskData),
+    return this.request<TaskListResponse>(endpoint, {
+      method: "GET",
     });
   }
 
-  async updateTask(id: string, taskData: TaskUpdateData): Promise<Task> {
-    // Full update via PATCH (backend treats PUT and PATCH identically)
-    return retryNetworkCall(
-      () =>
-        this.request<Task>(`/api/tasks/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(taskData),
-        }),
-      { maxRetries: 1 }
-    );
+  async createTask(data: TaskCreateData): Promise<Task> {
+    return this.request<Task>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
-  async patchTask(id: string, taskData: Partial<TaskUpdateData>): Promise<Task> {
-    // Partial update — idempotent with same payload; retry once is safe
-    return retryNetworkCall(
-      () =>
-        this.request<Task>(`/api/tasks/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(taskData),
-        }),
-      { maxRetries: 1 }
-    );
+  async patchTask(
+    id: string,
+    data: TaskUpdateData
+  ): Promise<Task> {
+    return this.request<Task>(`/api/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   }
 
   async deleteTask(id: string): Promise<void> {
-    // DELETE is idempotent — safe to retry
-    return retryNetworkCall(
-      () => this.request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
-      { maxRetries: 2 }
-    );
+    return this.request<void>(`/api/tasks/${id}`, {
+      method: "DELETE",
+    });
   }
 
   async toggleComplete(id: string): Promise<Task> {
-    // Use the dedicated toggle endpoint — idempotent? No (toggle changes state),
-    // so do NOT retry.
-    return this.request<Task>(`/api/tasks/${id}/complete`, { method: 'PATCH' });
+    return this.request<Task>(`/api/tasks/${id}/complete`, {
+      method: "PATCH",
+    });
+  }
+
+  // ======================================================
+  // CHAT API
+  // ======================================================
+
+  async sendChatMessage(
+    userId: string,
+    body: ChatRequest
+  ): Promise<ChatResponse> {
+    return this.request<ChatResponse>(
+      `/api/${userId}/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    );
   }
 }
+
+// ======================================================
+// EXPORT SINGLETON INSTANCE
+// ======================================================
 
 export const taskApiService = new TaskApiService();

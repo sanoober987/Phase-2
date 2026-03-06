@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session_maker
+
 from app.services.auth_service import get_current_user  # noqa: F401 - re-exported for routes
 
 logger = logging.getLogger(__name__)

@@ -9,6 +9,8 @@ import { DeleteConfirm } from "@/components/tasks/DeleteConfirm";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { useAuth } from "@/hooks/useAuth";
 import type { Task, TaskFormData } from "@/types";
 
 function DashboardContent() {
@@ -25,6 +27,8 @@ function DashboardContent() {
     toggleComplete,
     setFilter,
   } = useTasks();
+
+  const { user } = useAuth();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -74,7 +78,8 @@ function DashboardContent() {
   }, [toggleComplete]);
 
   return (
-    <main className="space-y-6">
+    <main className="flex flex-col gap-6 lg:grid lg:grid-cols-[1fr_400px] lg:gap-8 lg:items-start">
+      <div className="space-y-6">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -164,6 +169,12 @@ function DashboardContent() {
         onCancel={() => setDeletingTask(null)}
         isDeleting={isSubmitting}
       />
+      </div>
+      {user && (
+        <div className="lg:sticky lg:top-6">
+          <ChatPanel userId={user.id} onTasksChanged={fetchTasks} />
+        </div>
+      )}
     </main>
   );
 }

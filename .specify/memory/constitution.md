@@ -2,18 +2,22 @@
   ============================================================================
   SYNC IMPACT REPORT
   ============================================================================
-  Version change: 0.0.0 → 1.0.0 (MAJOR - initial constitution ratification)
+  Version change: 1.0.0 → 1.1.0 (MINOR - Phase III AI agent principles added)
 
-  Modified principles: N/A (initial creation)
+  Modified principles:
+    - II. Modularity → now includes AI agent and MCP tool layers
+    - III. Reproducibility → no change
+    - IV. Responsiveness → renamed to IV. Stateless Design (new principle)
+    - V. Maintainability → now includes logging and traceability requirements
 
   Added sections:
-    - Core Principles (5 principles: Security, Modularity, Reproducibility,
-      Responsiveness, Maintainability)
-    - Technology Stack
-    - Development Constraints
-    - Governance
+    - Principle IV: Stateless Design (replaces Responsiveness for Phase III)
+    - Principle VI: Responsiveness (moved to VI to accommodate new principle)
+    - AI Agent Behavior (intent mapping, MCP tools, tool execution rules)
+    - Conversation Standards (chat endpoint contract)
+    - Phase III Database Models (Conversation, Message)
 
-  Removed sections: N/A (initial creation)
+  Removed sections: None
 
   Templates requiring updates:
     - .specify/templates/plan-template.md ✅ (compatible - no changes needed)
@@ -24,44 +28,47 @@
   ============================================================================
 -->
 
-# Todo Full-Stack Web Application Constitution
+# Todo AI Chatbot — Phase III Intelligent Agent System Constitution
 
 ## Core Principles
 
 ### I. Security (NON-NEGOTIABLE)
 
-Every user MUST only access their own tasks, enforced via JWT authentication.
+Every user MUST only access their own tasks and conversation history,
+enforced via JWT authentication and strict user_id scoping.
 
 - All API endpoints MUST verify JWT tokens before processing requests
 - JWT tokens MUST be signed with `BETTER_AUTH_SECRET` shared between frontend and backend
 - Tokens MUST expire after a maximum of 7 days
 - Unauthorized access attempts MUST return HTTP 401
 - Backend MUST filter all data queries by authenticated user ID
+- MCP tools MUST validate `user_id` on every invocation; cross-user access is FORBIDDEN
 - Tokens MUST NOT be exposed in URLs, logs, or client-side storage (except httpOnly cookies)
 - Password hashing MUST use industry-standard algorithms (bcrypt, argon2)
 
 **Rationale**: Multi-user applications require strict data isolation. A single
-authorization bypass could expose all users' data.
+authorization bypass could expose all users' tasks and conversation data.
 
 ### II. Modularity
 
-Clear separation of frontend, backend, and database layers is REQUIRED.
+Clear separation of UI, AI logic, and database layers is REQUIRED.
 
-- Frontend (Next.js 16+ App Router) handles UI and client-side state only
-- Backend (FastAPI) handles business logic, validation, and data access
+- Frontend (conversational UI) handles user interaction and chat rendering only
+- Backend (FastAPI) handles business logic, JWT verification, and AI orchestration
+- AI layer (OpenAI Agents SDK) handles intent interpretation and tool dispatch
+- MCP Server handles stateless, database-backed tool execution
 - Database (Neon PostgreSQL) handles persistence via SQLModel ORM
 - Authentication (Better Auth) handles identity and JWT issuance
-- Each layer MUST communicate only through defined API contracts
-- No direct database access from frontend; all data flows through REST API
+- Each layer MUST communicate only through defined contracts; no cross-layer shortcuts
 
-**Rationale**: Separation of concerns enables independent scaling, testing, and
-deployment of each layer.
+**Rationale**: Layered separation enables independent testing, scaling, and
+replacement of any component without cascading changes.
 
 ### III. Reproducibility
 
-All features MUST be implemented via Claude Code based on specs. No manual coding allowed.
+All features MUST be implemented via the Agentic Dev Stack. No manual coding allowed.
 
-- Every feature follows the Agentic Dev Stack workflow:
+- Every feature follows the workflow:
   1. Write spec (`/sp.specify`)
   2. Generate plan (`/sp.plan`)
   3. Break into tasks (`/sp.tasks`)
@@ -69,27 +76,43 @@ All features MUST be implemented via Claude Code based on specs. No manual codin
 - All code changes MUST be traceable to a spec or task
 - Prompt History Records (PHR) MUST document all significant interactions
 - Architecture Decision Records (ADR) MUST document significant design choices
+- AI agent decisions and tool calls MUST be logged for traceability
 
-**Rationale**: Spec-driven development ensures traceability, consistency, and
-the ability to reproduce or modify any feature systematically.
+**Rationale**: Spec-driven development ensures every change can be reproduced,
+audited, or reverted systematically.
 
-### IV. Responsiveness
+### IV. Stateless Design
 
-Frontend MUST be fully functional across all devices (mobile, tablet, desktop).
+Backend MUST NOT retain in-memory session state; all conversational context
+MUST be persisted in the database.
 
-- Mobile-first CSS approach using responsive breakpoints
-- All interactive elements MUST be touch-friendly (minimum 44x44px tap targets)
-- Forms MUST be usable on mobile keyboards
-- Loading states MUST provide feedback within 200ms
-- Error messages MUST be clearly visible on all screen sizes
-- Navigation MUST adapt to screen size (hamburger menu on mobile)
+- The chat endpoint MUST load conversation history from the database on every request
+- No server-side session objects or in-memory caches for conversation context
+- Agent state MUST be reconstructed from persisted `Message` records per request
+- MCP tools MUST be stateless; all state lives in the database
+- Horizontal scaling MUST be possible without session affinity
 
-**Rationale**: Users expect applications to work seamlessly regardless of device.
-Poor mobile experience directly impacts user adoption and satisfaction.
+**Rationale**: Stateless architecture guarantees conversation persistence across
+server restarts and enables reliable horizontal scaling.
 
-### V. Maintainability
+### V. Reliability
 
-Clear API structure, proper error handling, and environment configuration are REQUIRED.
+Agent tool execution MUST be deterministic, logged, and free of silent failures.
+
+- Every MCP tool call MUST return structured JSON output (success or error)
+- Agent decisions, tool calls, database operations, and errors MUST be logged
+- Failed tool calls MUST surface actionable error messages to the agent
+- The chat endpoint MUST complete the full pipeline (load → append → agent →
+  tools → store → respond) atomically or roll back
+- Retry logic SHOULD be implemented for transient database failures
+
+**Rationale**: Unreliable tool execution leads to inconsistent task state and
+degrades user trust in the conversational interface.
+
+### VI. Maintainability
+
+Clear API structure, proper error handling, and environment configuration
+are REQUIRED.
 
 - RESTful API design with consistent endpoint naming
 - All endpoints MUST return appropriate HTTP status codes:
@@ -104,36 +127,121 @@ Clear API structure, proper error handling, and environment configuration are RE
 - Structured logging MUST be implemented for debugging and monitoring
 - Error responses MUST include actionable messages (not stack traces in production)
 
-**Rationale**: Maintainable code reduces debugging time, enables onboarding of new
-contributors, and supports long-term project health.
+**Rationale**: Maintainable code reduces debugging time and supports long-term
+project health as the AI feature set grows.
 
 ## Technology Stack
 
-| Layer          | Technology                    | Version/Notes                    |
-|----------------|-------------------------------|----------------------------------|
-| Frontend       | Next.js (App Router)          | 16+ with Server/Client Components|
-| Backend        | Python FastAPI                | Async endpoints, Pydantic models |
-| ORM            | SQLModel                      | Type-safe database operations    |
-| Database       | Neon Serverless PostgreSQL    | Connection pooling required      |
-| Authentication | Better Auth                   | JWT token issuance               |
-| Spec-Driven    | Claude Code + Spec-Kit Plus   | No manual coding                 |
+| Layer          | Technology                    | Version/Notes                         |
+|----------------|-------------------------------|---------------------------------------|
+| Frontend       | Conversational UI (ChatKit)   | OpenAI ChatKit or equivalent          |
+| Backend        | Python FastAPI                | Async endpoints, Pydantic models      |
+| AI Framework   | OpenAI Agents SDK             | Intent mapping, tool dispatch         |
+| Tooling Layer  | MCP Server (Official SDK)     | Stateless, database-backed tools      |
+| ORM            | SQLModel                      | Type-safe database operations         |
+| Database       | Neon Serverless PostgreSQL    | Connection pooling required           |
+| Authentication | Better Auth                   | JWT token issuance, BETTER_AUTH_SECRET|
+| Spec-Driven    | Claude Code + Spec-Kit Plus   | No manual coding                      |
+
+## Conversation Standards
+
+### Chat Endpoint Contract
+
+```
+POST /api/{user_id}/chat
+Authorization: Bearer <token>
+```
+
+The server MUST execute this pipeline on every request:
+
+1. Validate JWT; extract and verify `user_id`
+2. Load conversation history from the `Message` table for this user
+3. Append the new user message to history
+4. Send full context (history + new message) to the AI agent
+5. Execute any MCP tool calls returned by the agent
+6. Store the assistant response as a `Message` record
+7. Return the assistant response immediately
+
+### Stateless Contract
+
+- No pipeline step may depend on in-memory state from a prior request
+- Tool outputs MUST be stored before the response is returned
+
+## AI Agent Behavior
+
+### Intent Mapping Rules
+
+The AI MUST automatically map user intent to the correct MCP tool:
+
+| User Intent    | MCP Tool        |
+|----------------|-----------------|
+| Create task    | `add_task`      |
+| List tasks     | `list_tasks`    |
+| Complete task  | `complete_task` |
+| Delete task    | `delete_task`   |
+| Update task    | `update_task`   |
+
+### MCP Tool Standards
+
+All tools MUST be stateless and database-backed.
+
+Required tools: `add_task`, `list_tasks`, `complete_task`, `delete_task`,
+`update_task`
+
+Tool execution rules:
+- MUST validate `user_id` on every call
+- MUST NOT allow cross-user data access
+- MUST return structured JSON output
 
 ## Development Constraints
 
-### Required CRUD Endpoints
+### Database Models
 
-All task operations MUST be implemented:
+**Task**
 
-- `GET /api/tasks` - List all tasks for authenticated user
-- `POST /api/tasks` - Create a new task
-- `GET /api/tasks/{id}` - Retrieve a specific task
-- `PUT /api/tasks/{id}` - Update a task
-- `DELETE /api/tasks/{id}` - Delete a task
-- `PATCH /api/tasks/{id}/toggle` - Toggle task completion status
+| Field         | Type      | Notes                    |
+|---------------|-----------|--------------------------|
+| id            | UUID/int  | Primary key              |
+| user_id       | string    | FK, indexed              |
+| title         | string    | Required                 |
+| description   | string    | Optional                 |
+| completed     | boolean   | Default false            |
+| created_at    | datetime  | Auto                     |
+| updated_at    | datetime  | Auto                     |
+
+**Conversation**
+
+| Field      | Type     | Notes       |
+|------------|----------|-------------|
+| id         | UUID/int | Primary key |
+| user_id    | string   | FK, indexed |
+| created_at | datetime | Auto        |
+| updated_at | datetime | Auto        |
+
+**Message**
+
+| Field           | Type     | Notes                          |
+|-----------------|----------|--------------------------------|
+| id              | UUID/int | Primary key                    |
+| conversation_id | UUID/int | FK → Conversation              |
+| role            | string   | user \| assistant \| tool      |
+| content         | text     | Message body                   |
+| tool_calls      | JSON     | Agent tool call records        |
+| created_at      | datetime | Auto                           |
+
+### Required API Endpoints
+
+- `POST /api/{user_id}/chat` — Conversational task management (primary)
+- `GET /api/tasks` — List tasks for authenticated user
+- `POST /api/tasks` — Create a task
+- `GET /api/tasks/{id}` — Retrieve a task
+- `PUT /api/tasks/{id}` — Update a task
+- `DELETE /api/tasks/{id}` — Delete a task
+- `PATCH /api/tasks/{id}/toggle` — Toggle completion status
 
 ### Environment Variables
 
-Required environment variables (MUST NOT be hardcoded):
+Required (MUST NOT be hardcoded):
 
 ```
 # Shared secret between Better Auth and FastAPI
@@ -144,6 +252,9 @@ DATABASE_URL=postgresql://...@neon.tech/...
 
 # Frontend
 NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# AI
+OPENAI_API_KEY=<key>
 ```
 
 ### JWT Token Requirements
@@ -158,6 +269,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - All API endpoints MUST be testable
 - Authentication flow MUST be verified (signup, signin, token validation)
 - Task isolation MUST be tested (User A cannot access User B's tasks)
+- MCP tool calls MUST be verifiable with mock user context
+- Chat endpoint pipeline MUST be integration-tested end-to-end
 - Error responses MUST be verified for all failure scenarios
 
 ## Governance
@@ -185,12 +298,15 @@ This constitution supersedes all other development practices for this project.
 
 A compliant implementation MUST demonstrate:
 
+- [ ] Users can control tasks using natural language via the chat endpoint
+- [ ] Chat history persists across server restarts (database-backed)
+- [ ] MCP tools execute correctly and return structured JSON
+- [ ] AI agent correctly maps all 5 intent types to the right tool
+- [ ] No data leakage between users (task and conversation isolation verified)
 - [ ] All CRUD operations functional for each authenticated user
 - [ ] API returns proper HTTP codes for success and error conditions
 - [ ] JWT auth correctly implemented: token verification, expiration, stateless
-- [ ] Frontend displays correct task data per user and handles errors properly
-- [ ] Application responsive and functional on multiple devices
+- [ ] Frontend displays correct chat and task data per user
 - [ ] Secure and ready for deployment with documented setup
-- [ ] Full-stack integration tested with verified task isolation
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-01
+**Version**: 1.1.0 | **Ratified**: 2026-02-01 | **Last Amended**: 2026-02-25
